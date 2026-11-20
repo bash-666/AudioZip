@@ -1,6 +1,7 @@
 package com.compresoraudio.app.audio
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
@@ -29,6 +30,20 @@ object SafUtils {
         if (mime != null && mime.startsWith("audio/")) return true
         val ext = name.substringAfterLast('.', "").lowercase()
         return ext in audioExts
+    }
+
+    /** Duration in milliseconds read from the media metadata, or 0 when unknown. */
+    fun queryDurationMs(context: Context, uri: Uri): Long {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: 0L
+        } catch (e: Exception) {
+            0L
+        } finally {
+            runCatching { retriever.release() }
+        }
     }
 
     /**
