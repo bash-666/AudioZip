@@ -402,12 +402,14 @@ private fun AudioItemCard(
             )
             if (item.status == AudioItem.Status.ERROR && !item.errorDetail.isNullOrBlank()) {
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    text = item.errorDetail,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 4,
-                )
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(
+                        text = item.errorDetail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 8,
+                    )
+                }
             }
             if (item.status == AudioItem.Status.WORKING || item.status == AudioItem.Status.DONE) {
                 Spacer(Modifier.height(8.dp))
