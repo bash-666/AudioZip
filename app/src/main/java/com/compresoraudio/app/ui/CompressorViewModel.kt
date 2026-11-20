@@ -111,17 +111,21 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             val quality = _state.value.quality
             val outputTree = _state.value.outputTreeUri
             for (item in pending) {
-                updateItem(item.id) { it.copy(status = AudioItem.Status.WORKING, progress = 0f, error = null) }
-                val ok = try {
+                updateItem(item.id) { it.copy(status = AudioItem.Status.WORKING, progress = 0f, error = null, errorDetail = null) }
+                val result = try {
                     processItem(item, format, quality, outputTree)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    false
+                    ItemResult(false)
                 }
-                if (!ok) {
+                if (!result.ok) {
                     updateItem(item.id) {
-                        it.copy(status = AudioItem.Status.ERROR, error = "No se pudo comprimir")
+                        it.copy(
+                            status = AudioItem.Status.ERROR,
+                            error = "No se pudo comprimir",
+                            errorDetail = result.logTail.ifBlank { null },
+                        )
                     }
                 }
             }
@@ -134,26 +138,30 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    private data class ItemResult(val ok: Boolean, val logTail: String = "")
+
     private suspend fun processItem(
         item: AudioItem,
         format: OutputFormat,
         quality: Quality,
         outputTree: Uri?,
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): ItemResult = withContext(Dispatchers.IO) {
         val cacheDir = File(appContext.cacheDir, "compress").apply { mkdirs() }
         val inputFile = File(cacheDir, "in_${item.id}_${item.name}")
         val outputFile = File(cacheDir, "out_${item.id}.${format.ext}")
         try {
             SafUtils.copyUriToFile(appContext, item.uri, inputFile)
-            val success = AudioCompressor.compress(inputFile, outputFile, format, quality) { p ->
+            val result = AudioCompressor.compress(inputFile, outputFile, format, quality) { p ->
                 updateItem(item.id) { it.copy(progress = p) }
             }
-            if (!success || !outputFile.exists()) return@withContext false
+            if (!result.success || !outputFile.exists()) {
+                return@withContext ItemResult(false, result.logTail)
+            }
 
             val outName = item.outputNameFor(format)
             val outputUri: Uri = if (outputTree != null) {
                 val docUri = SafUtils.createOutputDocument(appContext, outputTree, outName, format.mime)
-                    ?: return@withContext false
+                    ?: return@withContext ItemResult(false)
                 SafUtils.copyFileToUri(appContext, outputFile, docUri)
                 docUri
             } else {
@@ -175,7 +183,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                     outputName = outName,
                 )
             }
-            true
+            ItemResult(true)
         } finally {
             inputFile.delete()
             outputFile.delete()
