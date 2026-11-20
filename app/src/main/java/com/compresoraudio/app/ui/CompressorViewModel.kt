@@ -2,6 +2,7 @@ package com.compresoraudio.app.ui
 
 import android.app.Application
 import android.content.Intent
+import android.media.MediaPlayer
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.core.content.FileProvider
@@ -23,6 +24,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+data class PlaybackState(
+    val itemId: Long? = null,
+    val output: Boolean = false,
+    val isPlaying: Boolean = false,
+)
+
 data class CompressorUiState(
     val items: List<AudioItem> = emptyList(),
     val format: OutputFormat = OutputFormat.MP3,
@@ -32,6 +39,7 @@ data class CompressorUiState(
     val outputFolderLabel: String = "Carpeta de la app (comprimidos)",
     val isRunning: Boolean = false,
     val message: String = "",
+    val playback: PlaybackState = PlaybackState(),
 )
 
 class CompressorViewModel(application: Application) : AndroidViewModel(application) {
@@ -41,6 +49,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
     private var nextId = 1L
     private var compressJob: Job? = null
+    private var mediaPlayer: MediaPlayer? = null
 
     private val appContext get() = getApplication<Application>().applicationContext
 
@@ -97,12 +106,51 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun removeItem(id: Long) {
+        if (_state.value.playback.itemId == id) stopPlayback()
         _state.update { s -> s.copy(items = s.items.filterNot { it.id == id }) }
     }
 
     fun clearAll() {
         if (_state.value.isRunning) return
+        stopPlayback()
         _state.update { it.copy(items = emptyList(), message = "") }
+    }
+
+    /** Plays the original (useOutput=false) or the compressed result of an item. */
+    fun togglePlay(item: AudioItem, useOutput: Boolean) {
+        val current = _state.value.playback
+        if (current.itemId == item.id && current.output == useOutput) {
+            stopPlayback()
+            return
+        }
+        stopPlayback()
+        val uri = if (useOutput) item.outputUri else item.uri
+        if (uri == null) return
+        val player = MediaPlayer()
+        mediaPlayer = player
+        _state.update { it.copy(playback = PlaybackState(item.id, useOutput, isPlaying = false)) }
+        try {
+            player.setDataSource(appContext, uri)
+            player.setOnPreparedListener { p ->
+                p.start()
+                _state.update { it.copy(playback = it.playback.copy(isPlaying = true)) }
+            }
+            player.setOnCompletionListener { stopPlayback() }
+            player.setOnErrorListener { _, _, _ ->
+                stopPlayback()
+                true
+            }
+            player.prepareAsync()
+        } catch (e: Exception) {
+            stopPlayback()
+        }
+    }
+
+    fun stopPlayback() {
+        runCatching { mediaPlayer?.stop() }
+        runCatching { mediaPlayer?.release() }
+        mediaPlayer = null
+        _state.update { it.copy(playback = PlaybackState()) }
     }
 
     fun cancel() {
