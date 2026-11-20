@@ -17,6 +17,7 @@ enum class Quality(val label: String) {
     ALTA("Alta"),
     MEDIA("Media"),
     BAJA("Baja"),
+    MANUAL("Manual"),
 }
 
 data class AudioItem(
@@ -31,6 +32,7 @@ data class AudioItem(
     val outputName: String? = null,
     val error: String? = null,
     val errorDetail: String? = null,
+    val durationMs: Long = 0L,
 ) {
     enum class Status { PENDING, WORKING, DONE, ERROR }
 
@@ -45,3 +47,17 @@ fun formatBytes(bytes: Long): String {
     if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0)
     return String.format("%.2f MB", bytes / (1024.0 * 1024.0))
 }
+
+/**
+ * Approximate output size for a lossy encode at [bitrateKbps] over [durationMs].
+ * CBR/ABR encoders make this close; VBR varies with content. Returns 0 when
+ * the duration is unknown.
+ */
+fun estimateOutputBytes(bitrateKbps: Int, durationMs: Long): Long {
+    if (durationMs <= 0) return 0L
+    return bitrateKbps.toLong() * durationMs / 8L + 2048L
+}
+
+/** True when the estimated output would actually be smaller than the original. */
+fun isPositiveCompression(originalBytes: Long, estimatedBytes: Long): Boolean =
+    estimatedBytes > 0 && estimatedBytes < originalBytes
