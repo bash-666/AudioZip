@@ -30,7 +30,7 @@ object AudioCompressor {
             }
             OutputFormat.WAV -> listOf("-c:a", "pcm_s16le")
         }
-        return listOf("-i", inputPath) + codecArgs + listOf(outputPath)
+        return listOf("-y", "-i", inputPath) + codecArgs + listOf(outputPath)
     }
 
     fun durationMsOf(file: File): Long {
@@ -45,9 +45,12 @@ object AudioCompressor {
         }
     }
 
+    data class CompressResult(val success: Boolean, val logTail: String)
+
     /**
      * Compresses [input] into [output]. Reports progress 0..1 via [onProgress]
-     * when the input duration is known. Returns true on success.
+     * when the input duration is known. On failure, [CompressResult.logTail]
+     * carries the last lines of the ffmpeg output to help diagnose the error.
      */
     suspend fun compress(
         input: File,
@@ -55,7 +58,7 @@ object AudioCompressor {
         format: OutputFormat,
         quality: Quality,
         onProgress: (Float) -> Unit,
-    ): Boolean {
+    ): CompressResult {
         val durationMs = durationMsOf(input)
         val args = argsFor(format, quality, input.absolutePath, output.absolutePath)
         return suspendCancellableCoroutine { cont ->
@@ -68,7 +71,8 @@ object AudioCompressor {
             val session = FFmpegKit.executeWithArgumentsAsync(args.toTypedArray()) { s ->
                 FFmpegKitConfig.enableStatisticsCallback { _ -> }
                 if (cont.isActive) {
-                    cont.resume(ReturnCode.isSuccess(s.returnCode))
+                    val log = s.output?.takeLast(1500) ?: ""
+                    cont.resume(CompressResult(ReturnCode.isSuccess(s.returnCode), log))
                 }
             }
             cont.invokeOnCancellation {
