@@ -232,18 +232,35 @@ class TrimViewModel(app: Application) : AndroidViewModel(app) {
     fun addSegment() {
         val s = _state.value
         val file = s.files.firstOrNull { it.id == s.selectedFileId } ?: return
+        addSegmentFor(file, file.selStartMs, file.selEndMs)
+    }
+
+    /** Adds the whole file as one segment, without trimming. */
+    fun addWholeFile(fileId: Long) {
+        val s = _state.value
+        val file = s.files.firstOrNull { it.id == fileId } ?: return
+        addSegmentFor(file, 0L, file.durationMs)
+    }
+
+    /** Adds every loaded file whole, in list order. */
+    fun addAllFilesWhole() {
+        val s = _state.value
+        s.files.forEach { file -> addSegmentFor(file, 0L, file.durationMs) }
+    }
+
+    private fun addSegmentFor(file: TrimFileItem, startMs: Long, endMs: Long) {
         val cached = file.cachedPath ?: run {
-            _state.update { it.copy(message = "Espera a que se cargue la onda de ${file.name}") }
+            _state.update { it.copy(message = "Espera a que se cargue ${file.name}") }
             return
         }
-        if (file.selEndMs - file.selStartMs < MIN_SEGMENT_MS) return
+        if (endMs - startMs < MIN_SEGMENT_MS) return
         val seg = TrimSegment(
             id = nextSegmentId++,
             fileId = file.id,
             fileName = file.name,
             cachedPath = cached,
-            startMs = file.selStartMs,
-            endMs = file.selEndMs,
+            startMs = startMs,
+            endMs = endMs,
         )
         _state.update {
             it.copy(
