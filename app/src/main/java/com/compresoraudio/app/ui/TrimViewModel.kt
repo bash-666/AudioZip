@@ -61,6 +61,7 @@ data class TrimUiState(
     val isExporting: Boolean = false,
     val exportProgress: Float = 0f,
     val isPreviewing: Boolean = false,
+    val previewPositionMs: Long? = null,
     val message: String = "",
     val exportedUri: Uri? = null,
     val exportedName: String? = null,
@@ -119,30 +120,49 @@ class TrimViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadWaveform(item: TrimFileItem) {
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) {
+            // Phase 1: copy to cache so the file is usable right away, even
+            // while the waveform is still being generated.
+            val cachedPath = withContext(Dispatchers.IO) {
                 try {
                     val ext = item.name.substringAfterLast('.', "bin").lowercase()
                     val cached = File(trimDir(), "in_${item.id}.$ext")
                     SafUtils.copyUriToFile(appContext, item.uri, cached)
-                    val peaks = TrimJoiner.extractPeaks(cached)
-                    Triple(cached.absolutePath, peaks, peaks != null)
+                    cached.absolutePath
                 } catch (e: Exception) {
-                    Triple<String?, FloatArray?, Boolean>(null, null, false)
+                    null
                 }
             }
-            val (path, peaks, ok) = result
             _state.update { s ->
                 s.copy(
                     files = s.files.map { f ->
-                        if (f.id == item.id) {
-                            f.copy(cachedPath = path, peaks = peaks, waveLoading = false)
-                        } else f
+                        if (f.id == item.id) f.copy(cachedPath = cachedPath) else f
                     },
-                    message = if (!ok && path == null) {
-                        "No se pudo preparar ${item.name}"
-                    } else if (!ok) {
-                        "No se pudo generar la onda de ${item.name}"
-                    } else s.message,
+                    message = if (cachedPath == null) "No se pudo preparar ${item.name}" else s.message,
+                )
+            }
+            if (cachedPath == null) {
+                _state.update { s ->
+                    s.copy(
+                        files = s.files.map { f ->
+                            if (f.id == item.id) f.copy(waveLoading = false) else f
+                        }
+                    )
+                }
+                return@launch
+            }
+            // Phase 2: waveform peaks (streaming, safe for long files).
+            val peaks = withContext(Dispatchers.IO) {
+                try {
+                    TrimJoiner.extractPeaks(File(cachedPath))
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            _state.update { s ->
+                s.copy(
+                    files = s.files.map { f ->
+                        if (f.id == item.id) f.copy(peaks = peaks, waveLoading = false) else f
+                    }
                 )
             }
         }
@@ -255,6 +275,7 @@ class TrimViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- Preview ----------
 
+    /** Plays the current selection in a loop so the user can check the cut. */
     fun togglePreview() {
         if (_state.value.isPreviewing) {
             stopPreview()
@@ -266,15 +287,14 @@ class TrimViewModel(app: Application) : AndroidViewModel(app) {
         stopPreview()
         val player = MediaPlayer()
         previewPlayer = player
-        _state.update { it.copy(isPreviewing = true) }
+        _state.update { it.copy(isPreviewing = true, previewPositionMs = file.selStartMs) }
         try {
             player.setDataSource(appContext, file.uri)
             player.setOnPreparedListener { p ->
                 p.seekTo(file.selStartMs.toInt())
                 p.start()
-                schedulePreviewStop(p, file.selEndMs)
+                schedulePreviewLoop(p, file.selStartMs, file.selEndMs)
             }
-            player.setOnCompletionListener { stopPreview() }
             player.setOnErrorListener { _, _, _ ->
                 stopPreview()
                 true
@@ -285,13 +305,14 @@ class TrimViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun schedulePreviewStop(player: MediaPlayer, endMs: Long) {
+    private fun schedulePreviewLoop(player: MediaPlayer, startMs: Long, endMs: Long) {
         val check = object : Runnable {
             override fun run() {
                 if (previewPlayer !== player) return
-                if (player.currentPosition >= endMs.toInt()) {
-                    stopPreview()
-                    return
+                val pos = runCatching { player.currentPosition }.getOrDefault(0)
+                _state.update { it.copy(previewPositionMs = pos.toLong()) }
+                if (pos >= endMs.toInt()) {
+                    runCatching { player.seekTo(startMs.toInt()) }
                 }
                 previewHandler.postDelayed(this, 100)
             }
@@ -304,8 +325,8 @@ class TrimViewModel(app: Application) : AndroidViewModel(app) {
         runCatching { previewPlayer?.stop() }
         runCatching { previewPlayer?.release() }
         previewPlayer = null
-        if (_state.value.isPreviewing) {
-            _state.update { it.copy(isPreviewing = false) }
+        if (_state.value.isPreviewing || _state.value.previewPositionMs != null) {
+            _state.update { it.copy(isPreviewing = false, previewPositionMs = null) }
         }
     }
 
