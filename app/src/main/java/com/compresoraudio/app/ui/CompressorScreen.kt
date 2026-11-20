@@ -2,6 +2,7 @@ package com.compresoraudio.app.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -42,10 +43,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,9 +59,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.compresoraudio.app.audio.AudioItem
 import com.compresoraudio.app.audio.OutputFormat
 import com.compresoraudio.app.audio.Quality
+import com.compresoraudio.app.audio.UpdateChecker
 import com.compresoraudio.app.audio.estimateOutputBytes
 import com.compresoraudio.app.audio.formatBytes
 import com.compresoraudio.app.audio.isPositiveCompression
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,6 +75,92 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
     val context = LocalContext.current
     var showHelp by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableIntStateOf(0) }
+    var showUpdate by remember { mutableStateOf(false) }
+    var updateState by remember { mutableStateOf(UpdateUiState()) }
+    var downloadId by remember { mutableStateOf<Long?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun currentVersion(): String = try {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
+    } catch (e: Exception) {
+        "?"
+    }
+
+    fun checkForUpdates() {
+        val current = currentVersion()
+        updateState = UpdateUiState(phase = UpdatePhase.CHECKING, currentVersion = current)
+        scope.launch {
+            val info = UpdateChecker.checkLatest()
+            updateState = when {
+                info == null -> UpdateUiState(
+                    phase = UpdatePhase.ERROR,
+                    currentVersion = current,
+                    errorMessage = "No se pudo comprobar. Revisa tu conexión e inténtalo de nuevo.",
+                )
+                UpdateChecker.isNewerVersion(info.version, current) -> UpdateUiState(
+                    phase = UpdatePhase.AVAILABLE,
+                    currentVersion = current,
+                    release = info,
+                )
+                else -> UpdateUiState(
+                    phase = UpdatePhase.UP_TO_DATE,
+                    currentVersion = current,
+                    release = info,
+                )
+            }
+        }
+    }
+
+    fun startUpdateDownload() {
+        val info = updateState.release ?: return
+        val url = info.apkUrl
+        if (url == null) {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.pageUrl)))
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !context.packageManager.canRequestPackageInstalls()
+        ) {
+            context.startActivity(UpdateChecker.installPermissionIntent(context))
+            updateState = updateState.copy(
+                phase = UpdatePhase.ERROR,
+                errorMessage = "Concede el permiso de instalar apps desconocidas a AudioZip " +
+                    "y vuelve a intentarlo.",
+            )
+            return
+        }
+        downloadId = UpdateChecker.enqueueDownload(context, url, "AudioZip-${info.version}.apk")
+        updateState = updateState.copy(phase = UpdatePhase.DOWNLOADING, downloadProgress = -1f)
+    }
+
+    fun installUpdate() {
+        val id = downloadId ?: return
+        UpdateChecker.installIntent(context, id)?.let { context.startActivity(it) }
+    }
+
+    LaunchedEffect(downloadId) {
+        val id = downloadId ?: return@LaunchedEffect
+        while (true) {
+            when (UpdateChecker.downloadStatus(context, id)) {
+                android.app.DownloadManager.STATUS_SUCCESSFUL -> {
+                    updateState = updateState.copy(phase = UpdatePhase.DOWNLOADED)
+                    break
+                }
+                android.app.DownloadManager.STATUS_FAILED -> {
+                    updateState = updateState.copy(
+                        phase = UpdatePhase.ERROR,
+                        errorMessage = "La descarga falló. Inténtalo de nuevo.",
+                    )
+                    break
+                }
+            }
+            val p = UpdateChecker.downloadProgress(context, id)
+            if (p != null && p.second > 0) {
+                updateState = updateState.copy(downloadProgress = p.first.toFloat() / p.second.toFloat())
+            }
+            delay(500)
+        }
+    }
 
     val pickFiles = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
@@ -114,7 +206,29 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
     }
 
     if (showHelp) {
-        HelpDialog(onDismiss = { showHelp = false })
+        HelpDialog(
+            onDismiss = { showHelp = false },
+            onCheckUpdates = {
+                showHelp = false
+                showUpdate = true
+                checkForUpdates()
+            },
+        )
+    }
+
+    if (showUpdate) {
+        UpdateDialog(
+            state = updateState,
+            onDismiss = { showUpdate = false },
+            onRetry = { checkForUpdates() },
+            onDownload = { startUpdateDownload() },
+            onInstall = { installUpdate() },
+            onOpenReleasePage = {
+                updateState.release?.pageUrl?.let { page ->
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(page)))
+                }
+            },
+        )
     }
 
     Scaffold(
@@ -389,7 +503,7 @@ private fun ManualControls(
 }
 
 @Composable
-private fun HelpDialog(onDismiss: () -> Unit) {
+private fun HelpDialog(onDismiss: () -> Unit, onCheckUpdates: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Cómo comprimir bien") },
@@ -433,7 +547,10 @@ private fun HelpDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cerrar") }
+            Row {
+                TextButton(onClick = onCheckUpdates) { Text("Buscar actualizaciones") }
+                TextButton(onClick = onDismiss) { Text("Cerrar") }
+            }
         },
     )
 }
