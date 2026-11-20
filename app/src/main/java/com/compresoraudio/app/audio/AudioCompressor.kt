@@ -11,22 +11,31 @@ import kotlin.coroutines.resume
 /** Thin wrapper around ffmpeg-kit for audio transcoding. */
 object AudioCompressor {
 
-    fun argsFor(format: OutputFormat, quality: Quality, inputPath: String, outputPath: String): List<String> {
+    fun argsFor(
+        format: OutputFormat,
+        quality: Quality,
+        inputPath: String,
+        outputPath: String,
+        bitrateKbps: Int = 128,
+    ): List<String> {
         val codecArgs = when (format) {
             OutputFormat.MP3 -> when (quality) {
                 Quality.ALTA -> listOf("-c:a", "libmp3lame", "-b:a", "320k")
                 Quality.MEDIA -> listOf("-c:a", "libmp3lame", "-b:a", "192k")
                 Quality.BAJA -> listOf("-c:a", "libmp3lame", "-b:a", "128k")
+                Quality.MANUAL -> listOf("-c:a", "libmp3lame", "-b:a", "${bitrateKbps}k")
             }
             OutputFormat.OGG -> when (quality) {
                 Quality.ALTA -> listOf("-c:a", "libvorbis", "-q:a", "7")
                 Quality.MEDIA -> listOf("-c:a", "libvorbis", "-q:a", "5")
                 Quality.BAJA -> listOf("-c:a", "libvorbis", "-q:a", "3")
+                Quality.MANUAL -> listOf("-c:a", "libvorbis", "-b:a", "${bitrateKbps}k")
             }
             OutputFormat.OPUS -> when (quality) {
                 Quality.ALTA -> listOf("-c:a", "libopus", "-b:a", "192k")
                 Quality.MEDIA -> listOf("-c:a", "libopus", "-b:a", "128k")
                 Quality.BAJA -> listOf("-c:a", "libopus", "-b:a", "96k")
+                Quality.MANUAL -> listOf("-c:a", "libopus", "-b:a", "${bitrateKbps}k")
             }
             OutputFormat.WAV -> listOf("-c:a", "pcm_s16le")
         }
@@ -57,10 +66,11 @@ object AudioCompressor {
         output: File,
         format: OutputFormat,
         quality: Quality,
+        bitrateKbps: Int = 128,
         onProgress: (Float) -> Unit,
     ): CompressResult {
         val durationMs = durationMsOf(input)
-        val args = argsFor(format, quality, input.absolutePath, output.absolutePath)
+        val args = argsFor(format, quality, input.absolutePath, output.absolutePath, bitrateKbps)
         return suspendCancellableCoroutine { cont ->
             FFmpegKitConfig.enableStatisticsCallback { stats ->
                 if (durationMs > 0) {
