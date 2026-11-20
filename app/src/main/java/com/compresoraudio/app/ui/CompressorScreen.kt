@@ -197,7 +197,7 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FormatDropdown(
-                    label = "Formato de salida",
+                    label = "Formato",
                     selected = state.format.label,
                     options = OutputFormat.entries.map { it.label },
                     onSelect = { label ->
