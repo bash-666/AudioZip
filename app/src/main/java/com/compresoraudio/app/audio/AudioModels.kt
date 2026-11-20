@@ -6,10 +6,12 @@ enum class OutputFormat(val label: String, val ext: String, val mime: String) {
     MP3("MP3", "mp3", "audio/mpeg"),
     OGG("OGG (Vorbis)", "ogg", "audio/ogg"),
     OPUS("Opus", "opus", "audio/ogg"),
-    WAV("WAV", "wav", "audio/wav");
+    WAV("WAV", "wav", "audio/wav"),
+    FLAC("FLAC", "flac", "audio/flac"),
+    M4A("M4A (AAC)", "m4a", "audio/mp4");
 
     companion object {
-        val supportedInputExts = setOf("mp3", "ogg", "opus", "wav")
+        val supportedInputExts = setOf("mp3", "ogg", "opus", "wav", "flac", "m4a")
     }
 }
 
@@ -61,3 +63,15 @@ fun estimateOutputBytes(bitrateKbps: Int, durationMs: Long): Long {
 /** True when the estimated output would actually be smaller than the original. */
 fun isPositiveCompression(originalBytes: Long, estimatedBytes: Long): Boolean =
     estimatedBytes > 0 && estimatedBytes < originalBytes
+
+/** Minimum length of a trim segment, in milliseconds. */
+const val MIN_SEGMENT_MS = 100L
+
+/** Formats milliseconds as m:ss.mmm, e.g. 1:23.456. */
+fun formatMs(ms: Long): String {
+    val totalSec = ms / 1000
+    val minutes = totalSec / 60
+    val seconds = totalSec % 60
+    val millis = ms % 1000
+    return String.format("%d:%02d.%03d", minutes, seconds, millis)
+}
