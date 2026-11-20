@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -261,7 +263,9 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
                         quality = state.quality,
                         bitrateKbps = state.manualBitrateKbps,
                         isRunning = state.isRunning,
+                        playback = state.playback,
                         onRemove = { viewModel.removeItem(item.id) },
+                        onTogglePlay = { useOutput -> viewModel.togglePlay(item, useOutput) },
                         onShare = {
                             viewModel.shareIntentFor(item)?.let { intent ->
                                 context.startActivity(intent)
@@ -398,7 +402,8 @@ private fun HelpDialog(onDismiss: () -> Unit) {
                     title = "Consejos rápidos",
                     body = "• WAV → MP3, OGG u Opus: siempre ahorra espacio.\n" +
                         "• MP3/OGG/Opus → mismo formato: casi nunca ahorra; usa Media o Baja si necesitas reducir.\n" +
-                        "• Los archivos conservan su nombre original; solo cambia la extensión.",
+                        "• Los archivos conservan su nombre original; solo cambia la extensión.\n" +
+                        "• Puedes escuchar el original y el resultado con los botones de reproducción de cada tarjeta, para comparar la calidad.",
                 )
             }
         },
@@ -474,7 +479,9 @@ private fun AudioItemCard(
     quality: Quality,
     bitrateKbps: Int,
     isRunning: Boolean,
+    playback: PlaybackState,
     onRemove: () -> Unit,
+    onTogglePlay: (Boolean) -> Unit,
     onShare: () -> Unit,
 ) {
     Card(
@@ -538,6 +545,29 @@ private fun AudioItemCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 8,
                     )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val playingOriginal = playback.itemId == item.id && !playback.output && playback.isPlaying
+                OutlinedButton(onClick = { onTogglePlay(false) }) {
+                    Icon(
+                        if (playingOriginal) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                    )
+                    Spacer(Modifier.padding(horizontal = 4.dp))
+                    Text(if (playingOriginal) "Pausar" else "Original")
+                }
+                if (item.status == AudioItem.Status.DONE) {
+                    val playingOutput = playback.itemId == item.id && playback.output && playback.isPlaying
+                    OutlinedButton(onClick = { onTogglePlay(true) }) {
+                        Icon(
+                            if (playingOutput) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                        )
+                        Spacer(Modifier.padding(horizontal = 4.dp))
+                        Text(if (playingOutput) "Pausar" else "Comprimido")
+                    }
                 }
             }
             if (item.status == AudioItem.Status.WORKING || item.status == AudioItem.Status.DONE) {
