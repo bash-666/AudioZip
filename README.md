@@ -14,10 +14,9 @@ el workflow `.github/workflows/build.yml` compila el APK en cada push.
 Descárgalo desde la pestaña **Actions** del repo (artefacto `compresor-audio-debug-apk`).
 
 Opción 2 — Android Studio:
-1. Copia `gradle-wrapper.jar` desde el proyecto FreeHtml a `gradle/wrapper/`
-   (es el mismo Gradle 9.6.0; el jar no se incluye en el repo).
+1. Si compilas en local, copia `gradle-wrapper.jar` de un proyecto con Gradle 9.6.0 a `gradle/wrapper/` (el jar no se incluye en el repo).
 2. Abre el proyecto y pulsa Run.
 
 ## Licencia
 
-GPL-3.0, igual que FreeHtml.
+GPL-3.0.
