@@ -42,9 +42,9 @@ Entrada y salida admiten **mp3, ogg, opus y wav**. WAV no comprime: es audio sin
 
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/01-inicio.png" width="200" alt="Pantalla principal"><br>Inicio</td>
-    <td align="center"><img src="docs/screenshots/02-manual.png" width="200" alt="Modo manual con slider"><br>Modo manual</td>
-    <td align="center"><img src="docs/screenshots/03-ayuda.png" width="200" alt="Sección de ayuda"><br>Ayuda</td>
+    <td align="center"><img src="docs/screenshot/01-inicio.png" width="200" alt="Pantalla principal"><br>Inicio</td>
+    <td align="center"><img src="docs/screenshot/02-manual.png" width="200" alt="Modo manual con slider"><br>Modo manual</td>
+    <td align="center"><img src="docs/screenshot/03-ayuda.png" width="200" alt="Sección de ayuda"><br>Ayuda</td>
   </tr>
 </table>
 
