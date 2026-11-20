@@ -38,6 +38,21 @@ object AudioCompressor {
                 Quality.MANUAL -> listOf("-c:a", "libopus", "-b:a", "${bitrateKbps}k")
             }
             OutputFormat.WAV -> listOf("-c:a", "pcm_s16le")
+            OutputFormat.FLAC -> {
+                val level = when (quality) {
+                    Quality.ALTA -> 8
+                    Quality.MEDIA -> 5
+                    Quality.BAJA -> 0
+                    Quality.MANUAL -> 5
+                }
+                listOf("-c:a", "flac", "-compression_level", level.toString())
+            }
+            OutputFormat.M4A -> when (quality) {
+                Quality.ALTA -> listOf("-c:a", "aac", "-b:a", "320k")
+                Quality.MEDIA -> listOf("-c:a", "aac", "-b:a", "192k")
+                Quality.BAJA -> listOf("-c:a", "aac", "-b:a", "128k")
+                Quality.MANUAL -> listOf("-c:a", "aac", "-b:a", "${bitrateKbps}k")
+            }
         }
         return listOf("-y", "-vn", "-sn", "-dn", "-i", inputPath) + codecArgs + listOf(outputPath)
     }
