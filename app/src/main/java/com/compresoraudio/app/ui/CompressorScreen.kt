@@ -100,7 +100,7 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
     }
 
     val pickOutputFolder = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree(),
+        MusicFolderPickerContract(),
     ) { uri ->
         if (uri != null) {
             runCatching {
@@ -187,7 +187,7 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onClick = { pickOutputFolder.launch(null) }) {
+                    OutlinedButton(onClick = { pickOutputFolder.launch(Unit) }) {
                         Text("Cambiar carpeta de salida")
                     }
                 }
