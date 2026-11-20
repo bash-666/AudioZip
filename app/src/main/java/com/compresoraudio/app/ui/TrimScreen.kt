@@ -111,7 +111,7 @@ fun TrimScreen(viewModel: TrimViewModel = viewModel()) {
     }
 
     val pickOutputFolder = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree(),
+        MusicFolderPickerContract(),
     ) { uri ->
         if (uri != null) {
             runCatching {
@@ -238,7 +238,7 @@ fun TrimScreen(viewModel: TrimViewModel = viewModel()) {
             onFormat = { viewModel.setOutputFormat(it) },
             onQuality = { viewModel.setQuality(it) },
             onBitrate = { viewModel.setManualBitrate(it) },
-            onPickOutput = { pickOutputFolder.launch(null) },
+            onPickOutput = { pickOutputFolder.launch(Unit) },
             onExport = { viewModel.export() },
             onCancel = { viewModel.cancelExport() },
             onShare = { viewModel.shareIntentForExport()?.let { context.startActivity(it) } },
