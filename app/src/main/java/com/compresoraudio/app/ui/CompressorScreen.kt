@@ -14,11 +14,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,6 +39,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -57,6 +62,7 @@ import com.compresoraudio.app.audio.formatBytes
 fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var showHelp by remember { mutableStateOf(false) }
 
     val pickFiles = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
@@ -101,9 +107,20 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
         }
     }
 
+    if (showHelp) {
+        HelpDialog(onDismiss = { showHelp = false })
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Compresor de Audio") })
+            TopAppBar(
+                title = { Text("Compresor de Audio") },
+                actions = {
+                    IconButton(onClick = { showHelp = true }) {
+                        Icon(Icons.Filled.Info, contentDescription = "Cómo comprimir")
+                    }
+                },
+            )
         },
     ) { padding ->
         Column(
@@ -241,6 +258,63 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
     }
 }
 
+@Composable
+private fun HelpDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cómo comprimir bien") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                HelpSection(
+                    title = "Elige el formato según tu uso",
+                    body = "MP3: compatible con todo, pero es el menos eficiente. Bueno para compartir.\n" +
+                        "OGG (Vorbis): más eficiente que MP3 a igual calidad. Ideal para audios de juegos.\n" +
+                        "Opus: el más eficiente de todos; ahorra más espacio a igual calidad. Perfecto para voces y música a bitrates bajos.\n" +
+                        "WAV: no comprime nada, es audio sin pérdida. El archivo pesa lo mismo o más; úsalo solo si necesitas la máxima calidad.",
+                )
+                HelpSection(
+                    title = "Calidad",
+                    body = "Alta, Media y Baja controlan el bitrate de salida: a mayor calidad, mayor tamaño. " +
+                        "Para audios de juegos, Media suele ser el mejor balance entre tamaño y calidad.",
+                )
+                HelpSection(
+                    title = "¿Por qué a veces pesa más?",
+                    body = "• Si el original ya viene comprimido (mp3, opus, ogg), recomprimirlo no lo hace más ligero: la calidad ya se perdió y solo se agrega tamaño.\n" +
+                        "• Si la calidad de salida es mayor que la del original (por ejemplo, original a 96 kbps y salida a 320 kbps), el archivo crece.\n" +
+                        "• Opus es más eficiente que MP3: un opus a 64 kbps puede pesar menos que un mp3 a 128 kbps aunque suene igual o mejor. Por eso pasar de opus a mp3 a veces da un archivo un poco más grande.\n" +
+                        "• WAV no comprime: siempre pesa mucho.",
+                )
+                HelpSection(
+                    title = "Consejos rápidos",
+                    body = "• WAV → MP3, OGG u Opus: siempre ahorra espacio.\n" +
+                        "• MP3/OGG/Opus → mismo formato: casi nunca ahorra; usa Media o Baja si necesitas reducir.\n" +
+                        "• Los archivos conservan su nombre original; solo cambia la extensión.",
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cerrar") }
+        },
+    )
+}
+
+@Composable
+private fun HelpSection(title: String, body: String) {
+    Column(modifier = Modifier.padding(bottom = 12.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = body,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FormatDropdown(
@@ -326,6 +400,15 @@ private fun AudioItemCard(
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
+            if (item.status == AudioItem.Status.ERROR && !item.errorDetail.isNullOrBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = item.errorDetail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 4,
+                )
+            }
             if (item.status == AudioItem.Status.WORKING || item.status == AudioItem.Status.DONE) {
                 Spacer(Modifier.height(8.dp))
                 LinearProgressIndicator(
