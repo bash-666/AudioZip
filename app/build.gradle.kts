@@ -1,8 +1,15 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+}
+
+// Persistent release signing (committed keystore so in-app updates keep the
+// same signature across builds). Passwords live in keystore.properties.
+val keystoreProps = Properties().apply {
+    rootProject.file("keystore.properties").inputStream().use { load(it) }
 }
 
 android {
@@ -33,6 +40,16 @@ android {
         localeFilters += listOf("es", "en")
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file("keystore/audiozip.keystore")
+            storeType = "PKCS12"
+            storePassword = keystoreProps.getProperty("storePassword")
+            keyAlias = keystoreProps.getProperty("keyAlias")
+            keyPassword = keystoreProps.getProperty("keyPassword")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -41,8 +58,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // Sign with the debug key so the CI-built APK installs directly.
-            signingConfig = signingConfigs.getByName("debug")
+            // Sign with the persistent release key so in-app updates install
+            // over the previous version.
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
