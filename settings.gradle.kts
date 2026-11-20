@@ -17,6 +17,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // ffmpeg-kit is no longer served by Maven Central; use Google's mirror of it.
+        maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2") }
     }
 }
 
