@@ -38,6 +38,7 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -55,7 +56,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.compresoraudio.app.audio.AudioItem
 import com.compresoraudio.app.audio.OutputFormat
 import com.compresoraudio.app.audio.Quality
+import com.compresoraudio.app.audio.estimateOutputBytes
 import com.compresoraudio.app.audio.formatBytes
+import com.compresoraudio.app.audio.isPositiveCompression
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -201,6 +205,16 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
                 )
             }
 
+            if (state.quality == Quality.MANUAL) {
+                Spacer(Modifier.height(12.dp))
+                ManualControls(
+                    format = state.format,
+                    bitrateKbps = state.manualBitrateKbps,
+                    items = state.items,
+                    onBitrateChange = viewModel::setManualBitrate,
+                )
+            }
+
             Spacer(Modifier.height(12.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -244,6 +258,8 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
                     AudioItemCard(
                         item = item,
                         outputFormat = state.format,
+                        quality = state.quality,
+                        bitrateKbps = state.manualBitrateKbps,
                         isRunning = state.isRunning,
                         onRemove = { viewModel.removeItem(item.id) },
                         onShare = {
@@ -253,6 +269,93 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
                         },
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualControls(
+    format: OutputFormat,
+    bitrateKbps: Int,
+    items: List<AudioItem>,
+    onBitrateChange: (Int) -> Unit,
+) {
+    if (format == OutputFormat.WAV) {
+        Text(
+            text = "El modo manual no aplica a WAV: es audio sin comprimir.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Bitrate manual",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "$bitrateKbps kbps",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Slider(
+                value = bitrateKbps.toFloat(),
+                onValueChange = { v ->
+                    val snapped = ((v - 32f) / 8f).roundToInt() * 8 + 32
+                    onBitrateChange(snapped)
+                },
+                valueRange = 32f..320f,
+                steps = 35,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "32",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = "320 kbps",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            val estimable = items.filter { it.durationMs > 0 }
+            if (estimable.isEmpty()) {
+                Text(
+                    text = "Agrega audios para ver la estimación de tamaño.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                val totalOriginal = estimable.sumOf { it.sizeBytes }
+                val totalEstimated = estimable.sumOf { estimateOutputBytes(bitrateKbps, it.durationMs) }
+                val positive = isPositiveCompression(totalOriginal, totalEstimated)
+                val pct = if (totalOriginal > 0) {
+                    ((1 - totalEstimated.toDouble() / totalOriginal.toDouble()) * 100).toInt()
+                } else 0
+                Text(
+                    text = if (positive) {
+                        "Estimado: ≈ ${formatBytes(totalEstimated)} (${pct}% menos) ✓ Positivo"
+                    } else {
+                        "Ojo: pesaría ≈ ${formatBytes(totalEstimated)}, más que los ${formatBytes(totalOriginal)} originales. Baja el bitrate."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (positive) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.error,
+                )
             }
         }
     }
@@ -276,6 +379,13 @@ private fun HelpDialog(onDismiss: () -> Unit) {
                     title = "Calidad",
                     body = "Alta, Media y Baja controlan el bitrate de salida: a mayor calidad, mayor tamaño. " +
                         "Para audios de juegos, Media suele ser el mejor balance entre tamaño y calidad.",
+                )
+                HelpSection(
+                    title = "Modo manual",
+                    body = "Con el modo Manual eliges el bitrate exacto (kbps) con un deslizador. " +
+                        "La app estima el tamaño final de cada archivo y te dice si la compresión es positiva " +
+                        "(el resultado pesará menos que el original) o si pesaría más. " +
+                        "Un bitrate bajo ahorra más espacio pero suena peor; uno alto suena mejor pero puede pesar más que el original.",
                 )
                 HelpSection(
                     title = "¿Por qué a veces pesa más?",
@@ -361,6 +471,8 @@ private fun FormatDropdown(
 private fun AudioItemCard(
     item: AudioItem,
     outputFormat: OutputFormat,
+    quality: Quality,
+    bitrateKbps: Int,
     isRunning: Boolean,
     onRemove: () -> Unit,
     onShare: () -> Unit,
@@ -400,6 +512,23 @@ private fun AudioItemCard(
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
+            if (quality == Quality.MANUAL && outputFormat != OutputFormat.WAV &&
+                item.status != AudioItem.Status.DONE && item.durationMs > 0
+            ) {
+                val est = estimateOutputBytes(bitrateKbps, item.durationMs)
+                val positive = isPositiveCompression(item.sizeBytes, est)
+                val pct = if (item.sizeBytes > 0) {
+                    ((1 - est.toDouble() / item.sizeBytes.toDouble()) * 100).toInt()
+                } else 0
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = if (positive) "≈ ${formatBytes(est)} (↓ $pct% menos)"
+                    else "≈ ${formatBytes(est)} (↑ pesaría más)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (positive) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.error,
+                )
+            }
             if (item.status == AudioItem.Status.ERROR && !item.errorDetail.isNullOrBlank()) {
                 Spacer(Modifier.height(4.dp))
                 androidx.compose.foundation.text.selection.SelectionContainer {
