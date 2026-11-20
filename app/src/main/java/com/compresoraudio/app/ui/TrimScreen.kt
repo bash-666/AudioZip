@@ -167,7 +167,8 @@ fun TrimScreen(viewModel: TrimViewModel = viewModel()) {
             Spacer(Modifier.height(8.dp))
             Text(
                 text = "Arrastra los marcadores de la onda para elegir qué parte guardar. " +
-                    "Toca la onda para mover el marcador más cercano.",
+                    "Toca la onda para mover el marcador más cercano. " +
+                    "Si no quieres recortar, toca «Agregar audio completo a la lista».",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -186,6 +187,18 @@ fun TrimScreen(viewModel: TrimViewModel = viewModel()) {
                     )
                 }
             }
+            if (state.files.size > 1) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { viewModel.addAllFilesWhole() },
+                    enabled = !state.isExporting,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.padding(horizontal = 4.dp))
+                    Text("Agregar todos los audios completos")
+                }
+            }
 
             val selected = state.files.firstOrNull { it.id == state.selectedFileId }
             if (selected != null) {
@@ -199,6 +212,7 @@ fun TrimScreen(viewModel: TrimViewModel = viewModel()) {
                     onReset = { viewModel.resetSelection(selected.id) },
                     onTogglePreview = { viewModel.togglePreview() },
                     onAddSegment = { viewModel.addSegment() },
+                    onAddWholeFile = { viewModel.addWholeFile(selected.id) },
                     onRemoveFile = { viewModel.removeFile(selected.id) },
                 )
             }
@@ -276,6 +290,7 @@ private fun TrimEditorCard(
     onReset: () -> Unit,
     onTogglePreview: () -> Unit,
     onAddSegment: () -> Unit,
+    onAddWholeFile: () -> Unit,
     onRemoveFile: () -> Unit,
 ) {
     Card(
@@ -399,7 +414,17 @@ private fun TrimEditorCard(
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null)
                 Spacer(Modifier.padding(horizontal = 4.dp))
-                Text("Agregar segmento a la lista")
+                Text("Agregar recorte a la lista")
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = onAddWholeFile,
+                enabled = !isExporting,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Spacer(Modifier.padding(horizontal = 4.dp))
+                Text("Agregar audio completo a la lista")
             }
         }
     }
@@ -492,7 +517,8 @@ private fun SegmentsCard(
             if (segments.isEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Recorta una sección y toca «Agregar segmento a la lista». " +
+                    text = "Toca «Agregar audio completo a la lista» para unir un audio entero, " +
+                        "o recorta una sección y toca «Agregar recorte a la lista». " +
                         "El orden de la lista es el orden del archivo final.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
