@@ -20,8 +20,11 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+    }
+
+    androidResources {
         // Keep only the languages the app actually uses.
-        resourceConfigurations += listOf("es", "en")
+        localeFilters += listOf("es", "en")
     }
 
     buildTypes {
