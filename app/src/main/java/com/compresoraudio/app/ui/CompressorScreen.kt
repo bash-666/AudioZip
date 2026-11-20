@@ -28,24 +28,22 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,8 +65,10 @@ import kotlin.math.roundToInt
 @Composable
 fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val trimViewModel: TrimViewModel = viewModel()
     val context = LocalContext.current
     var showHelp by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     val pickFiles = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
@@ -119,14 +119,30 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("AudioZip") },
-                actions = {
-                    IconButton(onClick = { showHelp = true }) {
-                        Icon(Icons.Filled.Info, contentDescription = "Cómo comprimir")
-                    }
-                },
-            )
+            Column {
+                TopAppBar(
+                    title = { Text("AudioZip") },
+                    actions = {
+                        if (selectedTab == 0) {
+                            IconButton(onClick = { showHelp = true }) {
+                                Icon(Icons.Filled.Info, contentDescription = "Cómo comprimir")
+                            }
+                        }
+                    },
+                )
+                TabRow(selectedTabIndex = selectedTab) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text("Comprimir") },
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = { Text("Recortar y unir") },
+                    )
+                }
+            }
         },
     ) { padding ->
         Column(
@@ -135,6 +151,8 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
                 .padding(padding)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
+            when (selectedTab) {
+                0 -> {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = { pickFiles.launch(arrayOf("audio/*")) },
@@ -198,10 +216,10 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
                 )
             }
 
-            if (state.format == OutputFormat.WAV) {
+            if (state.format == OutputFormat.WAV || state.format == OutputFormat.FLAC) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "WAV no se comprime: es audio sin pérdida. Si quieres archivos más ligeros, elige mp3, ogg u opus.",
+                    text = "WAV y FLAC son sin pérdida: no se comprimen. Si quieres archivos más ligeros, elige mp3, ogg, opus o m4a.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -274,6 +292,11 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
                     )
                 }
             }
+                }
+                1 -> {
+                    TrimScreen(viewModel = trimViewModel)
+                }
+            }
         }
     }
 }
@@ -285,9 +308,9 @@ private fun ManualControls(
     items: List<AudioItem>,
     onBitrateChange: (Int) -> Unit,
 ) {
-    if (format == OutputFormat.WAV) {
+    if (format == OutputFormat.WAV || format == OutputFormat.FLAC) {
         Text(
-            text = "El modo manual no aplica a WAV: es audio sin comprimir.",
+            text = "El modo manual no aplica a ${format.label}: es audio sin pérdida.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -377,6 +400,8 @@ private fun HelpDialog(onDismiss: () -> Unit) {
                     body = "MP3: compatible con todo, pero es el menos eficiente. Bueno para compartir.\n" +
                         "OGG (Vorbis): más eficiente que MP3 a igual calidad. Ideal para audios de juegos.\n" +
                         "Opus: el más eficiente de todos; ahorra más espacio a igual calidad. Perfecto para voces y música a bitrates bajos.\n" +
+                        "M4A (AAC): buena calidad y tamaño, muy compatible con iPhone y reproductores.\n" +
+                        "FLAC: sin pérdida, como WAV pero pesa menos. La calidad controla su nivel de compresión.\n" +
                         "WAV: no comprime nada, es audio sin pérdida. El archivo pesa lo mismo o más; úsalo solo si necesitas la máxima calidad.",
                 )
                 HelpSection(
@@ -430,48 +455,6 @@ private fun HelpSection(title: String, body: String) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FormatDropdown(
-    label: String,
-    selected: String,
-    options: List<String>,
-    onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
-        modifier = modifier,
-    ) {
-        OutlinedTextField(
-            value = selected,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
-                .fillMaxWidth(),
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option) },
-                    onClick = {
-                        onSelect(option)
-                        expanded = false
-                    },
-                )
-            }
-        }
-    }
-}
-
 @Composable
 private fun AudioItemCard(
     item: AudioItem,
@@ -520,6 +503,7 @@ private fun AudioItemCard(
                 },
             )
             if (quality == Quality.MANUAL && outputFormat != OutputFormat.WAV &&
+                outputFormat != OutputFormat.FLAC &&
                 item.status != AudioItem.Status.DONE && item.durationMs > 0
             ) {
                 val est = estimateOutputBytes(bitrateKbps, item.durationMs)
