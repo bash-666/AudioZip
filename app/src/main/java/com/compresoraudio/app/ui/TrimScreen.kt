@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
@@ -16,7 +17,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -30,27 +35,36 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -60,6 +74,7 @@ import com.compresoraudio.app.audio.Quality
 import com.compresoraudio.app.audio.formatBytes
 import com.compresoraudio.app.audio.formatMs
 import kotlin.math.abs
+import kotlin.math.round
 
 @Composable
 fun TrimScreen(viewModel: TrimViewModel = viewModel()) {
@@ -115,36 +130,48 @@ fun TrimScreen(viewModel: TrimViewModel = viewModel()) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = { pickFiles.launch(arrayOf("audio/*")) },
-                enabled = !state.isExporting,
-                modifier = Modifier.weight(1f),
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(Modifier.padding(horizontal = 4.dp))
-                Text("Agregar audios")
-            }
-            OutlinedButton(
-                onClick = { pickInputFolder.launch(null) },
-                enabled = !state.isExporting,
-                modifier = Modifier.weight(1f),
-            ) {
-                Icon(Icons.Filled.Folder, contentDescription = null)
-                Spacer(Modifier.padding(horizontal = 4.dp))
-                Text("Agregar carpeta")
-            }
+        StepHeader("1", "Elige los audios")
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = { pickFiles.launch(arrayOf("audio/*")) },
+            enabled = !state.isExporting,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = null)
+            Spacer(Modifier.padding(horizontal = 4.dp))
+            Text("Agregar audios")
         }
-
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = { pickInputFolder.launch(null) },
+            enabled = !state.isExporting,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.Folder, contentDescription = null)
+            Spacer(Modifier.padding(horizontal = 4.dp))
+            Text("Agregar carpeta")
+        }
         if (state.files.isEmpty()) {
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
-                text = "Agrega audios (mp3, ogg, opus, wav, flac o m4a), recorta la sección que quieras y únelas en un solo archivo.",
-                style = MaterialTheme.typography.bodyMedium,
+                text = "Puedes mezclar formatos: mp3, ogg, opus, wav, flac y m4a. " +
+                    "Los segmentos se unen en un solo archivo.",
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        } else {
-            Spacer(Modifier.height(12.dp))
+        }
+
+        if (state.files.isNotEmpty()) {
+            Spacer(Modifier.height(20.dp))
+            StepHeader("2", "Recorta la sección")
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Arrastra los marcadores de la onda para elegir qué parte guardar. " +
+                    "Toca la onda para mover el marcador más cercano.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -166,6 +193,7 @@ fun TrimScreen(viewModel: TrimViewModel = viewModel()) {
                 TrimEditorCard(
                     file = selected,
                     isPreviewing = state.isPreviewing,
+                    previewPositionMs = state.previewPositionMs,
                     isExporting = state.isExporting,
                     onRangeChange = { s, e -> viewModel.setRange(selected.id, s, e) },
                     onReset = { viewModel.resetSelection(selected.id) },
@@ -176,7 +204,9 @@ fun TrimScreen(viewModel: TrimViewModel = viewModel()) {
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(20.dp))
+        StepHeader("3", "Segmentos para unir")
+        Spacer(Modifier.height(8.dp))
         SegmentsCard(
             segments = state.segments,
             isExporting = state.isExporting,
@@ -186,7 +216,9 @@ fun TrimScreen(viewModel: TrimViewModel = viewModel()) {
             hasFiles = state.files.isNotEmpty(),
         )
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(20.dp))
+        StepHeader("4", "Exporta")
+        Spacer(Modifier.height(8.dp))
         ExportCard(
             state = state,
             onFormat = { viewModel.setOutputFormat(it) },
@@ -211,9 +243,34 @@ fun TrimScreen(viewModel: TrimViewModel = viewModel()) {
 }
 
 @Composable
+private fun StepHeader(number: String, title: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = number,
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.titleSmall,
+            )
+        }
+        Spacer(Modifier.padding(horizontal = 4.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+        )
+    }
+}
+
+@Composable
 private fun TrimEditorCard(
     file: TrimFileItem,
     isPreviewing: Boolean,
+    previewPositionMs: Long?,
     isExporting: Boolean,
     onRangeChange: (Long, Long) -> Unit,
     onReset: () -> Unit,
@@ -245,64 +302,160 @@ private fun TrimEditorCard(
             )
             Spacer(Modifier.height(8.dp))
             when {
-                file.waveLoading -> Text(
-                    text = "Cargando onda…",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 file.peaks != null -> {
                     WaveformView(
                         peaks = file.peaks,
                         durationMs = file.durationMs,
                         startMs = file.selStartMs,
                         endMs = file.selEndMs,
+                        playheadMs = previewPositionMs,
                         onRangeChange = onRangeChange,
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = formatMs(file.selStartMs),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TimeField(
+                            label = "Inicio",
+                            valueMs = file.selStartMs,
+                            fileKey = file.id,
+                            onApply = { onRangeChange(it, file.selEndMs) },
+                            modifier = Modifier.weight(1f),
                         )
-                        Spacer(Modifier.weight(1f))
+                        TimeField(
+                            label = "Fin",
+                            valueMs = file.selEndMs,
+                            fileKey = file.id * 10 + 1,
+                            onApply = { onRangeChange(file.selStartMs, it) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Duración de la selección: ${formatMs(file.selEndMs - file.selStartMs)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                file.waveLoading -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "Cargando onda…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                else -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(80.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Text(
-                            text = "Selección: ${formatMs(file.selEndMs - file.selStartMs)}",
+                            text = "No se pudo generar la onda. Puedes usar el archivo completo.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            text = formatMs(file.selEndMs),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
                     }
                 }
-                else -> Text(
-                    text = "No se pudo generar la onda de este archivo, pero puedes usarlo completo.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onTogglePreview, enabled = !isExporting) {
-                    Icon(
-                        if (isPreviewing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                    )
-                    Spacer(Modifier.padding(horizontal = 4.dp))
-                    Text(if (isPreviewing) "Pausar" else "Escuchar")
-                }
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = onTogglePreview,
+                enabled = !isExporting,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    if (isPreviewing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = null,
+                )
+                Spacer(Modifier.padding(horizontal = 4.dp))
+                Text(if (isPreviewing) "Pausar vista previa" else "Escuchar selección")
+            }
+            Spacer(Modifier.height(4.dp))
+            Row {
                 TextButton(onClick = onReset, enabled = !isExporting) {
-                    Text("Todo")
+                    Text("Seleccionar todo")
                 }
-                Button(onClick = onAddSegment, enabled = !isExporting) {
-                    Text("Agregar segmento")
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onRemoveFile, enabled = !isExporting) {
+                    Text("Quitar archivo")
                 }
+            }
+            Spacer(Modifier.height(4.dp))
+            Button(
+                onClick = onAddSegment,
+                enabled = !isExporting,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Spacer(Modifier.padding(horizontal = 4.dp))
+                Text("Agregar segmento a la lista")
             }
         }
+    }
+}
+
+@Composable
+private fun TimeField(
+    label: String,
+    valueMs: Long,
+    fileKey: Long,
+    onApply: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var text by remember(fileKey) { mutableStateOf(formatMs(valueMs)) }
+    var focused by remember(fileKey) { mutableStateOf(false) }
+    LaunchedEffect(valueMs) {
+        if (!focused) text = formatMs(valueMs)
+    }
+    fun commit() {
+        val parsed = parseMs(text)
+        if (parsed != null) onApply(parsed) else text = formatMs(valueMs)
+    }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { text = it },
+        label = { Text(label) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Number,
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(onDone = { commit() }),
+        modifier = modifier.onFocusChanged { state ->
+            focused = state.isFocused
+            if (!state.isFocused) commit()
+        },
+    )
+}
+
+/** Parses "m:ss.mmm", "m:ss", "ss.mmm" or plain seconds into milliseconds. */
+private fun parseMs(text: String): Long? {
+    val t = text.trim()
+    if (t.isEmpty()) return null
+    return try {
+        val parts = t.split(":")
+        when (parts.size) {
+            1 -> (parts[0].toDouble() * 1000).toLong()
+            2 -> {
+                val minutes = parts[0].toLong()
+                val seconds = parts[1].toDouble()
+                minutes * 60_000L + (seconds * 1000).toLong()
+            }
+            else -> null
+        }
+    } catch (e: Exception) {
+        null
     }
 }
 
@@ -325,8 +478,8 @@ private fun SegmentsCard(
             val totalMs = segments.sumOf { it.endMs - it.startMs }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Segmentos para unir (${segments.size})" +
-                        if (segments.isNotEmpty()) " · ${formatMs(totalMs)}" else "",
+                    text = "Segmentos (${segments.size})" +
+                        if (segments.isNotEmpty()) " · total ${formatMs(totalMs)}" else "",
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f),
                 )
@@ -339,7 +492,8 @@ private fun SegmentsCard(
             if (segments.isEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Recorta una sección y toca «Agregar segmento» para armar la lista.",
+                    text = "Recorta una sección y toca «Agregar segmento a la lista». " +
+                        "El orden de la lista es el orden del archivo final.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -405,14 +559,9 @@ private fun ExportCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text = "Exportar",
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FormatDropdown(
-                    label = "Formato de salida",
+                    label = "Formato",
                     selected = state.outputFormat.label,
                     options = OutputFormat.entries.map { it.label },
                     onSelect = { label ->
@@ -435,17 +584,14 @@ private fun ExportCard(
                 state.outputFormat != OutputFormat.FLAC
             ) {
                 Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Bitrate: ${state.manualBitrateKbps} kbps",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                androidx.compose.material3.Slider(
+                Text(
+                    text = "Bitrate: ${state.manualBitrateKbps} kbps",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Slider(
                     value = state.manualBitrateKbps.toFloat(),
                     onValueChange = { v ->
-                        val snapped = ((v - 32f) / 8f).let { kotlin.math.round(it).toInt() } * 8 + 32
+                        val snapped = ((v - 32f) / 8f).let { round(it).toInt() } * 8 + 32
                         onBitrate(snapped)
                     },
                     valueRange = 32f..320f,
@@ -504,20 +650,22 @@ fun WaveformView(
     durationMs: Long,
     startMs: Long,
     endMs: Long,
+    playheadMs: Long?,
     onRangeChange: (Long, Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
-    val handleTouchPx = with(density) { 32.dp.toPx() }
+    val handleTouchPx = with(density) { 40.dp.toPx() }
     var widthPx by remember { mutableFloatStateOf(0f) }
     val primary = MaterialTheme.colorScheme.primary
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     val selColor = primary.copy(alpha = 0.12f)
+    val playheadColor = MaterialTheme.colorScheme.onPrimaryContainer
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(140.dp)
+            .height(160.dp)
             .onSizeChanged { widthPx = it.width.toFloat() }
             .pointerInput(peaks, durationMs) {
                 awaitEachGesture {
@@ -582,8 +730,12 @@ fun WaveformView(
             }
             drawLine(primary, Offset(startX, 0f), Offset(startX, h), strokeWidth = 3f)
             drawLine(primary, Offset(endX, 0f), Offset(endX, h), strokeWidth = 3f)
-            drawCircle(primary, radius = 7f, center = Offset(startX, 14f))
-            drawCircle(primary, radius = 7f, center = Offset(endX, 14f))
+            drawCircle(primary, radius = 9f, center = Offset(startX, 16f))
+            drawCircle(primary, radius = 9f, center = Offset(endX, 16f))
+            if (playheadMs != null && durationMs > 0) {
+                val px = playheadMs.toFloat() / durationMs * w
+                drawLine(playheadColor, Offset(px, 0f), Offset(px, h), strokeWidth = 2.5f)
+            }
         }
     }
 }
