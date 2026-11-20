@@ -1,4 +1,4 @@
-# Compresor de Audio
+# AudioZip
 
 Aplicación Android para comprimir audios por lotes: mp3, ogg, opus y wav de entrada y salida, conservando el nombre original de cada archivo.
 
