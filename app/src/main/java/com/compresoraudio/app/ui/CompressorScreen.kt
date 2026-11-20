@@ -112,51 +112,81 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
     }
 
     fun startUpdateDownload() {
-        val info = updateState.release ?: return
-        val url = info.apkUrl
-        if (url == null) {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.pageUrl)))
-            return
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            !context.packageManager.canRequestPackageInstalls()
-        ) {
-            context.startActivity(UpdateChecker.installPermissionIntent(context))
+        try {
+            val info = updateState.release ?: return
+            val url = info.apkUrl
+            if (url == null) {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.pageUrl)))
+                return
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                !context.packageManager.canRequestPackageInstalls()
+            ) {
+                context.startActivity(UpdateChecker.installPermissionIntent(context))
+                updateState = updateState.copy(
+                    phase = UpdatePhase.ERROR,
+                    errorMessage = "Concede el permiso de instalar apps desconocidas a AudioZip " +
+                        "y vuelve a intentarlo.",
+                )
+                return
+            }
+            downloadId = UpdateChecker.enqueueDownload(context, url, "AudioZip-${info.version}.apk")
+            updateState = updateState.copy(phase = UpdatePhase.DOWNLOADING, downloadProgress = -1f)
+        } catch (e: Exception) {
             updateState = updateState.copy(
                 phase = UpdatePhase.ERROR,
-                errorMessage = "Concede el permiso de instalar apps desconocidas a AudioZip " +
-                    "y vuelve a intentarlo.",
+                errorMessage = "Error al iniciar la descarga: ${e.message ?: e.javaClass.simpleName}",
             )
-            return
         }
-        downloadId = UpdateChecker.enqueueDownload(context, url, "AudioZip-${info.version}.apk")
-        updateState = updateState.copy(phase = UpdatePhase.DOWNLOADING, downloadProgress = -1f)
     }
 
     fun installUpdate() {
-        val id = downloadId ?: return
-        UpdateChecker.installIntent(context, id)?.let { context.startActivity(it) }
+        try {
+            val id = downloadId ?: return
+            val intent = UpdateChecker.installIntent(context, id)
+            if (intent == null) {
+                updateState = updateState.copy(
+                    phase = UpdatePhase.ERROR,
+                    errorMessage = "No se encontró el archivo descargado.",
+                )
+                return
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            updateState = updateState.copy(
+                phase = UpdatePhase.ERROR,
+                errorMessage = "Error al abrir el instalador: ${e.message ?: e.javaClass.simpleName}",
+            )
+        }
     }
 
     LaunchedEffect(downloadId) {
         val id = downloadId ?: return@LaunchedEffect
         while (true) {
-            when (UpdateChecker.downloadStatus(context, id)) {
-                android.app.DownloadManager.STATUS_SUCCESSFUL -> {
-                    updateState = updateState.copy(phase = UpdatePhase.DOWNLOADED)
-                    break
+            try {
+                when (UpdateChecker.downloadStatus(context, id)) {
+                    android.app.DownloadManager.STATUS_SUCCESSFUL -> {
+                        updateState = updateState.copy(phase = UpdatePhase.DOWNLOADED)
+                        break
+                    }
+                    android.app.DownloadManager.STATUS_FAILED -> {
+                        updateState = updateState.copy(
+                            phase = UpdatePhase.ERROR,
+                            errorMessage = "La descarga falló. Inténtalo de nuevo.",
+                        )
+                        break
+                    }
                 }
-                android.app.DownloadManager.STATUS_FAILED -> {
-                    updateState = updateState.copy(
-                        phase = UpdatePhase.ERROR,
-                        errorMessage = "La descarga falló. Inténtalo de nuevo.",
-                    )
-                    break
+                val p = UpdateChecker.downloadProgress(context, id)
+                if (p != null && p.second > 0) {
+                    updateState = updateState.copy(downloadProgress = p.first.toFloat() / p.second.toFloat())
                 }
-            }
-            val p = UpdateChecker.downloadProgress(context, id)
-            if (p != null && p.second > 0) {
-                updateState = updateState.copy(downloadProgress = p.first.toFloat() / p.second.toFloat())
+            } catch (e: Exception) {
+                updateState = updateState.copy(
+                    phase = UpdatePhase.ERROR,
+                    errorMessage = "Error durante la descarga: ${e.message ?: e.javaClass.simpleName}",
+                )
+                break
             }
             delay(500)
         }
@@ -224,8 +254,10 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
             onDownload = { startUpdateDownload() },
             onInstall = { installUpdate() },
             onOpenReleasePage = {
-                updateState.release?.pageUrl?.let { page ->
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(page)))
+                runCatching {
+                    updateState.release?.pageUrl?.let { page ->
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(page)))
+                    }
                 }
             },
         )
