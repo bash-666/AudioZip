@@ -1,9 +1,13 @@
 package com.compresoraudio.app.audio
 
+import android.content.ContentValues
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import java.io.File
 
@@ -131,5 +135,38 @@ object SafUtils {
         context.contentResolver.openOutputStream(uri)?.use { output ->
             src.inputStream().use { input -> input.copyTo(output) }
         } ?: throw IllegalStateException("No se pudo escribir el archivo de salida")
+    }
+
+    /**
+     * Writes [src] into the public Music folder via MediaStore. No storage
+     * permission is needed for app-inserted media on Android 10+. Returns the
+     * media content Uri, or null on failure.
+     */
+    fun writeToMusic(context: Context, fileName: String, mime: String, src: File): Uri? {
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Audio.Media.DISPLAY_NAME, fileName)
+            put(MediaStore.Audio.Media.MIME_TYPE, mime)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Audio.Media.RELATIVE_PATH, Environment.DIRECTORY_MUSIC)
+                put(MediaStore.Audio.Media.IS_PENDING, 1)
+            }
+        }
+        val uri = resolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
+            ?: return null
+        return try {
+            resolver.openOutputStream(uri)?.use { out ->
+                src.inputStream().use { it.copyTo(out) }
+            } ?: throw IllegalStateException("No se pudo escribir el archivo")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear()
+                values.put(MediaStore.Audio.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            }
+            uri
+        } catch (e: Exception) {
+            runCatching { resolver.delete(uri, null, null) }
+            null
+        }
     }
 }
