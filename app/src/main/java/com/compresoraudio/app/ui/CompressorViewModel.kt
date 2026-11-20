@@ -36,7 +36,7 @@ data class CompressorUiState(
     val quality: Quality = Quality.MEDIA,
     val manualBitrateKbps: Int = 128,
     val outputTreeUri: Uri? = null,
-    val outputFolderLabel: String = "Carpeta de la app (comprimidos)",
+    val outputFolderLabel: String = "Música",
     val isRunning: Boolean = false,
     val message: String = "",
     val playback: PlaybackState = PlaybackState(),
@@ -225,14 +225,8 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                 SafUtils.copyFileToUri(appContext, outputFile, docUri)
                 docUri
             } else {
-                val dir = File(appContext.getExternalFilesDir(null), "comprimidos").apply { mkdirs() }
-                val dest = File(dir, outName)
-                outputFile.copyTo(dest, overwrite = true)
-                FileProvider.getUriForFile(
-                    appContext,
-                    "${appContext.packageName}.fileprovider",
-                    dest,
-                )
+                SafUtils.writeToMusic(appContext, outName, format.mime, outputFile)
+                    ?: return@withContext ItemResult(false)
             }
             updateItem(item.id) {
                 it.copy(
