@@ -20,6 +20,12 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // Only ship the ABIs real phones use; x86/x86_64 are emulator-only
+        // and roughly double the native library size.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     androidResources {
@@ -35,6 +41,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Sign with the debug key so the CI-built APK installs directly.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
