@@ -30,7 +30,7 @@ object AudioCompressor {
             }
             OutputFormat.WAV -> listOf("-c:a", "pcm_s16le")
         }
-        return listOf("-y", "-i", inputPath) + codecArgs + listOf(outputPath)
+        return listOf("-y", "-vn", "-sn", "-dn", "-i", inputPath) + codecArgs + listOf(outputPath)
     }
 
     fun durationMsOf(file: File): Long {
