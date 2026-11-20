@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Audio bars in teal/white -->
+    <path
+        android:fillColor="#00ABA9"
+        android:pathData="M30,44 h8 v20 h-8 z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,34 h8 v40 h-8 z" />
+    <path
+        android:fillColor="#00ABA9"
+        android:pathData="M54,40 h8 v28 h-8 z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M66,30 h8 v48 h-8 z" />
+</vector>
