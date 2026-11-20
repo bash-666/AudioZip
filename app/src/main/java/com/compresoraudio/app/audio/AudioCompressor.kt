@@ -71,7 +71,7 @@ object AudioCompressor {
             val session = FFmpegKit.executeWithArgumentsAsync(args.toTypedArray()) { s ->
                 FFmpegKitConfig.enableStatisticsCallback { _ -> }
                 if (cont.isActive) {
-                    val log = s.output?.takeLast(1500) ?: ""
+                    val log = errorExcerpt(s.output ?: "")
                     cont.resume(CompressResult(ReturnCode.isSuccess(s.returnCode), log))
                 }
             }
@@ -83,5 +83,22 @@ object AudioCompressor {
 
     fun cancelAll() {
         FFmpegKit.cancel()
+    }
+
+    /**
+     * Extracts the most useful lines from a full ffmpeg log: lines that look
+     * like errors, or the last lines when nothing matches.
+     */
+    private fun errorExcerpt(log: String): String {
+        val lines = log.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        if (lines.isEmpty()) return ""
+        val keywords = listOf(
+            "error", "invalid", "failed", "unknown", "could not", "cannot",
+            "unsupported", "conversion failed", "not found", "no such",
+            "missing", "unable",
+        )
+        val relevant = lines.filter { l -> keywords.any { l.contains(it, ignoreCase = true) } }
+        val picked = if (relevant.isNotEmpty()) relevant.takeLast(5) else lines.takeLast(5)
+        return picked.joinToString("\n")
     }
 }
