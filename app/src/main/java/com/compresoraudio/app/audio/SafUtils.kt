@@ -10,7 +10,7 @@ import java.io.File
 /** Helpers for Storage Access Framework (SAF) file/folder access. */
 object SafUtils {
 
-    private val audioExts = setOf("mp3", "ogg", "opus", "wav")
+    private val audioExts = setOf("mp3", "ogg", "opus", "wav", "flac", "m4a")
 
     fun queryNameAndSize(context: Context, uri: Uri): Pair<String, Long> {
         var name = uri.lastPathSegment ?: "audio"
