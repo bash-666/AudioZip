@@ -2,6 +2,7 @@ package com.compresoraudio.app.audio
 
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
+import java.io.BufferedInputStream
 import java.io.File
 import java.util.Locale
 import kotlin.math.abs
@@ -36,7 +37,8 @@ object TrimJoiner {
 
     /**
      * Decodes [input] to raw mono PCM and reduces it to [buckets] peak values
-     * (0..1) for waveform display. Returns null when decoding fails.
+     * (0..1) for waveform display. Streams the PCM file in chunks so long
+     * files do not load entirely into memory. Returns null on failure.
      */
     fun extractPeaks(input: File, buckets: Int = 240): FloatArray? {
         val pcm = File(input.parentFile, input.nameWithoutExtension + "_wave.pcm")
@@ -47,27 +49,40 @@ object TrimJoiner {
             )
         )
         if (!ok || !pcm.exists()) return null
-        val bytes = pcm.readBytes()
-        pcm.delete()
-        val samples = bytes.size / 2
-        if (samples <= 0) return null
-        val peaks = FloatArray(buckets)
-        val bucketSize = maxOf(1, samples / buckets)
-        for (b in 0 until buckets) {
-            var max = 0
-            val from = b * bucketSize
-            val to = minOf(samples, from + bucketSize)
-            var i = from
-            while (i < to) {
-                val lo = bytes[i * 2].toInt() and 0xFF
-                val hi = bytes[i * 2 + 1].toInt()
-                val v = abs((hi shl 8) or lo)
-                if (v > max) max = v
-                i++
+        try {
+            val totalSamples = pcm.length() / 2
+            if (totalSamples <= 0) return null
+            val peaks = FloatArray(buckets)
+            val bucketSize = maxOf(1L, totalSamples / buckets)
+            var sampleIdx = 0L
+            var bucket = 0
+            var bucketMax = 0
+            val buf = ByteArray(8192)
+            BufferedInputStream(pcm.inputStream(), 65536).use { stream ->
+                var read: Int
+                while (stream.read(buf).also { read = it } > 0) {
+                    var i = 0
+                    while (i + 1 < read) {
+                        val lo = buf[i].toInt() and 0xFF
+                        val hi = buf[i + 1].toInt()
+                        val v = abs((hi shl 8) or lo)
+                        if (v > bucketMax) bucketMax = v
+                        sampleIdx++
+                        val b = (sampleIdx / bucketSize).toInt()
+                        if (b > bucket) {
+                            peaks[bucket] = bucketMax / 32768f
+                            bucket = b.coerceAtMost(buckets - 1)
+                            bucketMax = 0
+                        }
+                        i += 2
+                    }
+                }
             }
-            peaks[b] = max / 32768f
+            peaks[bucket] = bucketMax / 32768f
+            return peaks
+        } finally {
+            pcm.delete()
         }
-        return peaks
     }
 
     /**
