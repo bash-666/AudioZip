@@ -30,6 +30,7 @@ data class AudioItem(
     val outputUri: Uri? = null,
     val outputName: String? = null,
     val error: String? = null,
+    val errorDetail: String? = null,
 ) {
     enum class Status { PENDING, WORKING, DONE, ERROR }
 
