@@ -118,7 +118,7 @@ fun CompressorScreen(viewModel: CompressorViewModel = viewModel()) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Compresor de Audio") },
+                title = { Text("AudioZip") },
                 actions = {
                     IconButton(onClick = { showHelp = true }) {
                         Icon(Icons.Filled.Info, contentDescription = "Cómo comprimir")
