@@ -50,17 +50,24 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
     fun addUris(uris: List<Uri>) {
         val existing = _state.value.items.map { it.uri.toString() }.toSet()
-        val newItems = uris
-            .filter { it.toString() !in existing }
-            .mapNotNull { uri ->
-                val (name, size) = SafUtils.queryNameAndSize(appContext, uri)
-                val ext = name.substringAfterLast('.', "").lowercase()
-                if (ext !in OutputFormat.supportedInputExts) return@mapNotNull null
-                val duration = SafUtils.queryDurationMs(appContext, uri)
-                AudioItem(id = nextId++, uri = uri, name = name, sizeBytes = size, durationMs = duration)
+        val fresh = uris.filter { it.toString() !in existing }
+        if (fresh.isEmpty()) return
+        val ids = fresh.map { nextId++ }
+        viewModelScope.launch {
+            // Metadata queries do I/O; keep them off the main thread so the
+            // UI does not stutter when adding many files or a whole folder.
+            val newItems = withContext(Dispatchers.IO) {
+                fresh.mapIndexedNotNull { i, uri ->
+                    val (name, size) = SafUtils.queryNameAndSize(appContext, uri)
+                    val ext = name.substringAfterLast('.', "").lowercase()
+                    if (ext !in OutputFormat.supportedInputExts) return@mapIndexedNotNull null
+                    val duration = SafUtils.queryDurationMs(appContext, uri)
+                    AudioItem(id = ids[i], uri = uri, name = name, sizeBytes = size, durationMs = duration)
+                }
             }
-        if (newItems.isNotEmpty()) {
-            _state.update { it.copy(items = it.items + newItems, message = "") }
+            if (newItems.isNotEmpty()) {
+                _state.update { it.copy(items = it.items + newItems, message = "") }
+            }
         }
     }
 
