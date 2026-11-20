@@ -27,6 +27,7 @@ data class CompressorUiState(
     val items: List<AudioItem> = emptyList(),
     val format: OutputFormat = OutputFormat.MP3,
     val quality: Quality = Quality.MEDIA,
+    val manualBitrateKbps: Int = 128,
     val outputTreeUri: Uri? = null,
     val outputFolderLabel: String = "Carpeta de la app (comprimidos)",
     val isRunning: Boolean = false,
@@ -45,6 +46,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setFormat(format: OutputFormat) = _state.update { it.copy(format = format) }
     fun setQuality(quality: Quality) = _state.update { it.copy(quality = quality) }
+    fun setManualBitrate(kbps: Int) = _state.update { it.copy(manualBitrateKbps = kbps) }
 
     fun addUris(uris: List<Uri>) {
         val existing = _state.value.items.map { it.uri.toString() }.toSet()
@@ -54,7 +56,8 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                 val (name, size) = SafUtils.queryNameAndSize(appContext, uri)
                 val ext = name.substringAfterLast('.', "").lowercase()
                 if (ext !in OutputFormat.supportedInputExts) return@mapNotNull null
-                AudioItem(id = nextId++, uri = uri, name = name, sizeBytes = size)
+                val duration = SafUtils.queryDurationMs(appContext, uri)
+                AudioItem(id = nextId++, uri = uri, name = name, sizeBytes = size, durationMs = duration)
             }
         if (newItems.isNotEmpty()) {
             _state.update { it.copy(items = it.items + newItems, message = "") }
@@ -109,11 +112,12 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
             _state.update { it.copy(isRunning = true, message = "") }
             val format = _state.value.format
             val quality = _state.value.quality
+            val bitrate = _state.value.manualBitrateKbps
             val outputTree = _state.value.outputTreeUri
             for (item in pending) {
                 updateItem(item.id) { it.copy(status = AudioItem.Status.WORKING, progress = 0f, error = null, errorDetail = null) }
                 val result = try {
-                    processItem(item, format, quality, outputTree)
+                    processItem(item, format, quality, outputTree, bitrate)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -145,13 +149,14 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         format: OutputFormat,
         quality: Quality,
         outputTree: Uri?,
+        bitrateKbps: Int = 128,
     ): ItemResult = withContext(Dispatchers.IO) {
         val cacheDir = File(appContext.cacheDir, "compress").apply { mkdirs() }
         val inputFile = File(cacheDir, "in_${item.id}_${item.name}")
         val outputFile = File(cacheDir, "out_${item.id}.${format.ext}")
         try {
             SafUtils.copyUriToFile(appContext, item.uri, inputFile)
-            val result = AudioCompressor.compress(inputFile, outputFile, format, quality) { p ->
+            val result = AudioCompressor.compress(inputFile, outputFile, format, quality, bitrateKbps = bitrateKbps) { p ->
                 updateItem(item.id) { it.copy(progress = p) }
             }
             if (!result.success || !outputFile.exists()) {
