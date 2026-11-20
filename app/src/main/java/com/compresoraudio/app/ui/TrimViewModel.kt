@@ -57,7 +57,7 @@ data class TrimUiState(
     val quality: Quality = Quality.MEDIA,
     val manualBitrateKbps: Int = 128,
     val outputTreeUri: Uri? = null,
-    val outputFolderLabel: String = "Carpeta de la app (comprimidos)",
+    val outputFolderLabel: String = "Música",
     val isExporting: Boolean = false,
     val exportProgress: Float = 0f,
     val isPreviewing: Boolean = false,
@@ -413,12 +413,7 @@ class TrimViewModel(app: Application) : AndroidViewModel(app) {
                             docUri
                         } else null
                     } else {
-                        val dir = File(appContext.filesDir, "comprimidos").apply { mkdirs() }
-                        val dest = File(dir, outName)
-                        outFile.copyTo(dest, overwrite = true)
-                        FileProvider.getUriForFile(
-                            appContext, "${appContext.packageName}.fileprovider", dest,
-                        )
+                        SafUtils.writeToMusic(appContext, outName, format.mime, outFile)
                     }
                 }
                 runCatching { outFile.delete() }
